@@ -14,6 +14,7 @@ import select
 import socket
 import sys
 import re
+import pathlib
 
 import glosocket
 import gloutils
@@ -109,13 +110,38 @@ class Server:
         validCredentials = validUsername and newUsername and validPwLength and pwContainsNumber and pwContainsMin and pwContainsMaj
 
         if validCredentials:
-            pass # create file (todo)
+            os.makedirs(gloutils.SERVER_DATA_DIR + "/" + userName)
+
+            # hash password and add to folder
+            encodedPw = pw.encode('utf-8')
+            hasher = hashlib.sha3_224()
+            hasher.update(encodedPw)
+            with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'w') as f:
+                json.dump(hasher, f)
+            
+            # confirm success to client
+            message = gloutils.GloMessage(header=gloutils.Headers.OK)
+
+            self._logged_users[client_soc] = userName
         else:
-            pass #raise error (todo)
+            error_string = ""
+            if not validUsername:
+                error_string = "Le nom d'utilisateur n'est pas alphanumérique"
+            elif not newUsername:
+                error_string = "Ce nom d'utilisateur est déjà pris"
+            elif not validPwLength:
+                error_string = "Le mot de passe doit contenir au moins 10 caractères"
+            elif not pwContainsNumber:
+                error_string = "Le mot de passe doit contenir au moins un chiffre"
+            elif not pwContainsMin:
+                error_string = "Le mot de passe doit contenir au moins une minuscule"
+            elif not pwContainsMaj:
+                error_string = "Le mot de passe doit contenir au moins une majuscule"
+            
+            message = gloutils.GloMessage(header=gloutils.Headers.ERROR,
+                                          payload=gloutils.ErrorPayload(error_message=error_string))
 
-
-
-        return gloutils.GloMessage()
+        return message
 
     def _login(self, client_soc: socket.socket, payload: gloutils.AuthPayload
                ) -> gloutils.GloMessage:
@@ -125,10 +151,37 @@ class Server:
         Si les identifiants sont valides, associe le socket à l'utilisateur et
         retourne un succès, sinon retourne un message d'erreur.
         """
-        return gloutils.GloMessage()
+        userName = payload["username"].upper()
+        pw = payload["password"]
+
+        validUsername = os.path.exists(gloutils.SERVER_DATA_DIR + "/" + userName)
+
+        # Verify password
+        with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'r') as f:
+            storedHash = json.load(f)
+        given_hash = hashlib.sha3_224()
+        given_hash.update(pw.encode('utf-8'))
+        validPw = given_hash == storedHash
+
+        if validUsername and validPw:
+            message = gloutils.GloMessage(header=gloutils.Headers.OK)
+            self._logged_users[client_soc] = userName
+        else:
+            error_string = ""
+            if not validUsername:
+                error_string = "Le nom d'utilisateur n'est pas valide"
+            elif not validPw:
+                error_string = "Le mot de passe n'est pas valide"
+
+            message = gloutils.GloMessage(header=gloutils.Headers.ERROR,
+                                          payload=gloutils.ErrorPayload(error_message=error_string))
+
+        return message
 
     def _logout(self, client_soc: socket.socket) -> None:
         """Déconnecte un utilisateur."""
+
+        self._logged_users.pop(client_soc)
 
     def _get_email_list(self, client_soc: socket.socket
                         ) -> gloutils.GloMessage:
@@ -139,7 +192,33 @@ class Server:
 
         Une absence de courriel n'est pas une erreur, mais une liste vide.
         """
-        return gloutils.GloMessage()
+
+        folder = gloutils.SERVER_DATA_DIR + "/" + self._logged_users[client_soc]
+        json_files = [f for f in os.listdir(folder) if f != gloutils.PASSWORD_FILENAME]
+
+        file_list = []
+        for file in json_files:
+            with open(folder + "/" + file, 'r') as f:
+                file_list.append(json.load(f))
+        
+        # List items format : (envoyeur, sujet, date)
+        email_list = [(mail["sender"], mail["subject"], mail["date"]) for mail in file_list]
+
+        # Sort list
+        sorted_list = sorted(email_list, key=lambda x : x[2], reverse=True)
+
+        subject_list = []
+        for i, email in enumerate(sorted_list):
+            display = gloutils.EMAIL_DISPLAY.format(
+                number = i+1,
+                sender = email[0],
+                subject = email[1],
+                date = email[2]
+            )
+            subject_list.append(display)
+
+        return gloutils.GloMessage(header=gloutils.Headers.OK,
+                                   payload=gloutils.EmailListPayload(email_list=subject_list))
 
     def _get_email(self, client_soc: socket.socket,
                    payload: gloutils.EmailChoicePayload
@@ -148,14 +227,53 @@ class Server:
         Récupère le contenu de l'email dans le dossier de l'utilisateur associé
         au socket.
         """
-        return gloutils.GloMessage()
+        folder = gloutils.SERVER_DATA_DIR + "/" + self._logged_users[client_soc]
+        json_files = [f for f in os.listdir(folder) if f != gloutils.PASSWORD_FILENAME]
+
+        file_list = []
+        for file in json_files:
+            with open(folder + "/" + file, 'r') as f:
+                file_list.append(json.load(f))
+
+        # Sort list
+        sorted_list = sorted(file_list, key=lambda x : x["date"], reverse=True)
+
+        chosen_email = sorted_list[payload["choice"] -1]
+        sender = chosen_email["sender"]
+        subject = chosen_email["subject"]
+        destination = chosen_email["destination"]
+        date = chosen_email["date"]
+        content = chosen_email["content"]
+
+        return gloutils.GloMessage(header=gloutils.Headers.OK,
+                                   payload=gloutils.EmailContentPayload(
+                                       sender=sender,
+                                       subject=subject,
+                                       destination=destination,
+                                       date=date,
+                                       content=content
+                                   ))
 
     def _get_stats(self, client_soc: socket.socket) -> gloutils.GloMessage:
         """
         Récupère le nombre de courriels et la taille du dossier et des fichiers
         de l'utilisateur associé au socket.
         """
-        return gloutils.GloMessage()
+
+        folder = pathlib.Path(gloutils.SERVER_DATA_DIR + "/" + self._logged_users[client_soc])
+        json_files = [f for f in os.listdir(folder) if f != gloutils.PASSWORD_FILENAME]
+
+        nb_of_emails = len(json_files)
+        
+        total_size = 0
+        for file in folder.iterdir():
+            total_size += os.path.getsize(file)
+
+        return gloutils.GloMessage(header=gloutils.Headers.OK,
+                                   payload=gloutils.StatsPayload(
+                                       count=nb_of_emails,
+                                       size=total_size
+                                   ))
 
     def _send_email(self, payload: gloutils.EmailContentPayload
                     ) -> gloutils.GloMessage:
@@ -169,7 +287,36 @@ class Server:
 
         Retourne un messange indiquant le succès ou l'échec de l'opération.
         """
-        return gloutils.GloMessage()
+        intern = exists = False
+        file_name = payload["subject"] + "|" + payload["date"]
+
+        if payload["destination"][-11:] == "@glo2000.ca":
+            destination_user = payload["destination"][:-11].upper()
+            intern = True
+
+        if os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination_user):
+                exists = True
+        
+        if intern and exists:
+            with open(gloutils.SERVER_DATA_DIR + "/" + destination_user + "/" + file_name, 'w') as f:
+                json.dump(payload, f)
+
+            message = gloutils.GLOMessage(gloutils.Headers.OK)
+        
+        else:
+            error_string = ""
+            if intern == False:
+                with open(gloutils.SERVER_DATA_DIR + "/" + gloutils.SERVER_LOST_DIR + file_name, 'w') as f:
+                    json.dump(payload, f)
+
+                error_string = "Le destinataire est externe au serveur"
+            elif exists == False:
+                error_string = "Cet utilisateur n'existe pas"
+            
+            message = gloutils.GloMessage(gloutils.Headers.ERROR,
+                                          payload=gloutils.ErrorPayload(error_message=error_string))
+
+        return message
 
     def run(self):
         """Point d'entrée du serveur."""

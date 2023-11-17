@@ -320,12 +320,15 @@ class Server:
 
     def run(self):
         """Point d'entrée du serveur."""
-        waiters = []
+        waiters = select.select([self._server_socket] + self._client_socs, [], [])[0]
         while True:
             # Select readable sockets
             for waiter in waiters:
                 # Handle sockets
-                pass
+                if waiter == self._server_socket:
+                    self._accept_client()
+                else:
+                    pass
 
 
 def _main() -> int:

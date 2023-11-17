@@ -32,7 +32,7 @@ class Client:
 
         try:
             self._client_soc.connect((destination, gloutils.APP_PORT))
-        except (TimeoutError, InterruptedError):
+        except (socket.error, TimeoutError, InterruptedError):
             sys.exit(1)
 
     def _register(self) -> None:
@@ -45,13 +45,17 @@ class Client:
         """
         username = input("Entrez un nom d'utilisateur : ")
         pw = getpass.getpass("Entrez un mot de passe : ")
+        print(pw)
 
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_REGISTER, payload=payload)
 
         glosocket.send_mesg(self._client_soc, json.dumps(message))
+        print("message sent")
 
         reply = json.loads(glosocket.recv_mesg(self._client_soc))
+
+        print("reply" + str(reply))
 
         if reply["header"] == gloutils.Headers.OK:
             self._username = username
@@ -186,8 +190,8 @@ class Client:
 
         reply = json.loads(glosocket.recv_mesg(self._client_soc))
         print(gloutils.SUBJECT_DISPLAY.format(
-            count=reply["count"],
-            size=reply["size"]
+            count=reply["payload"]["count"],
+            size=reply["payload"]["size"]
         ))
         return
 
@@ -208,44 +212,48 @@ class Client:
         should_quit = False
 
         while not should_quit:
-            if not self._username:
-                # Authentication menu
-                print("""Menu de connexion
-                      1. Créer un compte
-                      2. Se connecter
-                      3. Quitter
-                      """)
-                choix = input("Entrez votre choix [1-3] : ")
+            try:
+                if not self._username:
+                    # Authentication menu
+                    print("""Menu de connexion
+                        1. Créer un compte
+                        2. Se connecter
+                        3. Quitter
+                        """)
+                    choix = input("Entrez votre choix [1-3] : ")
 
-                if choix == "1":
-                    self._register()
-                elif choix == "2":
-                    self._login()
-                elif choix == "3":
-                    should_quit = True
+                    if choix == "1":
+                        self._register()
+                    elif choix == "2":
+                        self._login()
+                    elif choix == "3":
+                        should_quit = True
+                    else:
+                        print("Choix invalide...")
+
                 else:
-                    print("Choix invalide...")
+                    # Main menu
+                    print("""Menu principal
+                        1. Consultation de courriels
+                        2. Envoi de courriels
+                        3. Statistiques
+                        4. Se déconnecter
+                        """)
+                    choix = input("Entrez votre choix [1-4] : ")
 
-            else:
-                # Main menu
-                print("""Menu principal
-                      1. Consultation de courriels
-                      2. Envoi de courriels
-                      3. Statistiques
-                      4. Se déconnecter
-                      """)
-                choix = input("Entrez votre choix [1-4] : ")
-
-                if choix == "1":
-                    self._read_email()
-                elif choix == "2":
-                    self._send_email()
-                elif choix == "3":
-                    self._check_stats()
-                elif choix == "4":
-                    self._logout
-                else:
-                    print("Choix invalide...")
+                    if choix == "1":
+                        self._read_email()
+                    elif choix == "2":
+                        self._send_email()
+                    elif choix == "3":
+                        self._check_stats()
+                    elif choix == "4":
+                        self._logout()
+                    else:
+                        print("Choix invalide...")
+            except (ConnectionResetError, glosocket.GLOSocketError):
+                self._quit()
+                sys.exit(1)
 
 
 def _main() -> int:

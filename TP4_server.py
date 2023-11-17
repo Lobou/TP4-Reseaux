@@ -35,13 +35,15 @@ class Server:
 
         S'assure que les dossiers de données du serveur existent.
         """
+        try:
+            self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._server_socket.bind(("127.0.0.1", gloutils.APP_PORT))
+            self._server_socket.listen()
+        except socket.error:
+            sys.exit(1)
 
-        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server_socket.bind(("127.0.0.1", gloutils.APP_PORT))
-        self._server_socket.listen()
-
-        self._client_socs = []
+        self._client_socs : list[socket.socket] = []
         self._logged_users = {}
 
         if not os.path.exists(gloutils.SERVER_DATA_DIR):
@@ -60,7 +62,7 @@ class Server:
     def _accept_client(self) -> None:
         """Accepte un nouveau client."""
 
-        client_socket = self._server_socket.accept()
+        client_socket, _ = self._server_socket.accept()
         self._client_socs.append(client_socket)
 
     def _remove_client(self, client_soc: socket.socket) -> None:
@@ -117,7 +119,7 @@ class Server:
             hasher = hashlib.sha3_224()
             hasher.update(encodedPw)
             with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'w') as f:
-                json.dump(hasher, f)
+                json.dump(hasher.hexdigest(), f)
             
             # confirm success to client
             message = gloutils.GloMessage(header=gloutils.Headers.OK)
@@ -161,7 +163,7 @@ class Server:
             storedHash = json.load(f)
         given_hash = hashlib.sha3_224()
         given_hash.update(pw.encode('utf-8'))
-        validPw = given_hash == storedHash
+        validPw = given_hash.hexdigest() == storedHash
 
         if validUsername and validPw:
             message = gloutils.GloMessage(header=gloutils.Headers.OK)
@@ -320,15 +322,54 @@ class Server:
 
     def run(self):
         """Point d'entrée du serveur."""
-        waiters = select.select([self._server_socket] + self._client_socs, [], [])[0]
         while True:
             # Select readable sockets
-            for waiter in waiters:
+            readable_sockets : list[socket.socket] = select.select([self._server_socket] + self._client_socs, [], [])[0]
+            for waiter in readable_sockets:
                 # Handle sockets
                 if waiter == self._server_socket:
                     self._accept_client()
+                    print("client accepted")
                 else:
-                    pass
+                    try:
+                        print("reading data")
+                        data = glosocket.recv_mesg(waiter)
+                        data = json.loads(data)
+                        header = data["header"]
+                        payload = data.get("payload")
+                        print("data read")
+
+                        if header == gloutils.Headers.AUTH_REGISTER:
+                            print("reveived")
+                            reply = self._create_account(waiter, payload)
+                            print(str(reply))
+
+                        elif header == gloutils.Headers.AUTH_LOGIN:
+                            reply = self._login(waiter, payload)
+                        
+                        elif header == gloutils.Headers.BYE:
+                            reply = self._remove_client(waiter)
+
+                        elif header == gloutils.Headers.INBOX_READING_REQUEST:
+                            reply = self._get_email_list(waiter)
+                        
+                        elif header == gloutils.Headers.INBOX_READING_CHOICE:
+                            reply = self._get_email(waiter, payload)
+                        
+                        elif header == gloutils.Headers.EMAIL_SENDING:
+                            reply = self._send_email(payload)
+                        
+                        elif header == gloutils.Headers.STATS_REQUEST:
+                            reply = self._get_stats(waiter)
+                        
+                        elif header == gloutils.Headers.AUTH_LOGOUT:
+                            reply = self._logout(waiter)
+                        
+                        glosocket.send_mesg(waiter, json.dumps(reply))
+                        print("reply sent")
+
+                    except (ConnectionResetError, glosocket.GLOSocketError):
+                        self._remove_client(waiter)
 
 
 def _main() -> int:
@@ -337,6 +378,7 @@ def _main() -> int:
         server.run()
     except KeyboardInterrupt:
         server.cleanup()
+        sys.exit(1)
     return 0
 
 

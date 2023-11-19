@@ -292,9 +292,14 @@ class Server:
         intern = exists = False
         file_name = payload["subject"] + "|" + payload["date"]
 
-        if payload["destination"][-11:] == "@glo2000.ca":
-            destination_user = payload["destination"][:-11].upper()
+        # if payload["destination"][-11:] == "@glo2000.ca":
+        #     destination_user = payload["destination"][:-11].upper()
+        #     intern = True
+
+        destination_user = "@GLO2000.CA"
+        if payload["destination"][-11:] == destination_user.lower():
             intern = True
+        # ***Variable destination_user n'existe qu'a l'interieur des parenthese***
 
         if os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination_user):
                 exists = True
@@ -303,7 +308,7 @@ class Server:
             with open(gloutils.SERVER_DATA_DIR + "/" + destination_user + "/" + file_name, 'w') as f:
                 json.dump(payload, f)
 
-            message = gloutils.GLOMessage(gloutils.Headers.OK)
+            message = gloutils.GLOMessage(header=gloutils.Headers.OK)
         
         else:
             error_string = ""
@@ -315,7 +320,7 @@ class Server:
             elif exists == False:
                 error_string = "Cet utilisateur n'existe pas"
             
-            message = gloutils.GloMessage(gloutils.Headers.ERROR,
+            message = gloutils.GloMessage(header=gloutils.Headers.ERROR,
                                           payload=gloutils.ErrorPayload(error_message=error_string))
 
         return message

@@ -45,7 +45,6 @@ class Client:
         """
         username = input("Entrez un nom d'utilisateur : ")
         pw = getpass.getpass("Entrez un mot de passe : ")
-        print(pw)
 
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_REGISTER, payload=payload)
@@ -76,11 +75,11 @@ class Client:
 
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_LOGIN, payload=payload)
-
+        print("sending message")
         glosocket.send_mesg(self._client_soc, json.dumps(message))
-
+        print("loading reply")
         reply = json.loads(glosocket.recv_mesg(self._client_soc))
-
+        print("reply received\t" + str(reply))
         if reply["header"] == gloutils.Headers.OK:
             self._username = username
         elif reply["header"] == gloutils.Headers.ERROR:
@@ -114,27 +113,29 @@ class Client:
         glosocket.send_mesg(self._client_soc, json.dumps(message))
 
         reply = json.loads(glosocket.recv_mesg(self._client_soc))
+        payload = reply["payload"]
 
-        if len(reply["email_list"]) == 0:
+        if len(payload["email_list"]) == 0:
             print("Il n'y a aucun courriel à consulter...")
             return
         
-        for subject in reply["email_list"]:
+        for subject in payload["email_list"]:
             print(subject)
         
-        choice = int(input(f"Entrez votre choix [1-{len(reply['email_list'])}] : "))
+        choice = int(input(f"Entrez votre choix [1-{len(payload['email_list'])}] : "))
 
         message2 = gloutils.GloMessage(header=gloutils.Headers.INBOX_READING_CHOICE,
                                        payload=gloutils.EmailChoicePayload(choice=choice))
         glosocket.send_mesg(self._client_soc, json.dumps(message2))
 
         reply2 = json.loads(glosocket.recv_mesg(self._client_soc))
+        payload2 = reply2["payload"]
         print(gloutils.EMAIL_DISPLAY.format(
-            sender=reply2["sender"],
-            to=reply2["destination"],
-            subject=reply2["subject"],
-            date=reply2["date"],
-            body=reply2["content"]
+            sender=payload2["sender"],
+            to=payload2["destination"],
+            subject=payload2["subject"],
+            date=payload2["date"],
+            body=payload2["content"]
         ))
         return
 
@@ -189,7 +190,7 @@ class Client:
         glosocket.send_mesg(self._client_soc, json.dumps(message))
 
         reply = json.loads(glosocket.recv_mesg(self._client_soc))
-        print(gloutils.SUBJECT_DISPLAY.format(
+        print(gloutils.STATS_DISPLAY.format(
             count=reply["payload"]["count"],
             size=reply["payload"]["size"]
         ))
@@ -254,6 +255,7 @@ class Client:
             except (ConnectionResetError, glosocket.GLOSocketError):
                 self._quit()
                 sys.exit(1)
+        self._quit()
 
 
 def _main() -> int:

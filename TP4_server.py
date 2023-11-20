@@ -15,6 +15,7 @@ import socket
 import sys
 import re
 import pathlib
+import random
 
 import glosocket
 import gloutils
@@ -113,13 +114,16 @@ class Server:
 
         if validCredentials:
             os.makedirs(gloutils.SERVER_DATA_DIR + "/" + userName)
+            #os.makedirs(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME)
 
             # hash password and add to folder
             encodedPw = pw.encode('utf-8')
             hasher = hashlib.sha3_224()
             hasher.update(encodedPw)
+            data = {"password_hash": hasher.hexdigest()}
+            print(str(hasher.hexdigest()))
             with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'w') as f:
-                json.dump(hasher.hexdigest(), f)
+                json.dump(data, f)
             
             # confirm success to client
             message = gloutils.GloMessage(header=gloutils.Headers.OK)
@@ -155,16 +159,18 @@ class Server:
         """
         userName = payload["username"].upper()
         pw = payload["password"]
+        validUsername = validPw = False
 
         validUsername = os.path.exists(gloutils.SERVER_DATA_DIR + "/" + userName)
 
-        # Verify password
-        with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'r') as f:
-            storedHash = json.load(f)
-        given_hash = hashlib.sha3_224()
-        given_hash.update(pw.encode('utf-8'))
-        validPw = given_hash.hexdigest() == storedHash
-
+        # Verify password (only if username exists)
+        if validUsername:
+            with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'r') as f:
+                storedHash = json.load(f)
+            given_hash = hashlib.sha3_224()
+            given_hash.update(pw.encode('utf-8'))
+            validPw = given_hash.hexdigest() == storedHash["password_hash"]
+        print("valid username\t" + str(validUsername) + "\nvalid password\t" + str(validPw))
         if validUsername and validPw:
             message = gloutils.GloMessage(header=gloutils.Headers.OK)
             self._logged_users[client_soc] = userName
@@ -211,7 +217,7 @@ class Server:
 
         subject_list = []
         for i, email in enumerate(sorted_list):
-            display = gloutils.EMAIL_DISPLAY.format(
+            display = gloutils.SUBJECT_DISPLAY.format(
                 number = i+1,
                 sender = email[0],
                 subject = email[1],
@@ -290,7 +296,7 @@ class Server:
         Retourne un messange indiquant le succès ou l'échec de l'opération.
         """
         intern = exists = False
-        file_name = payload["subject"] + "|" + payload["date"]
+        file_name = "mail" + str(random.randrange(1000000))
 
         # if payload["destination"][-11:] == "@glo2000.ca":
         #     destination_user = payload["destination"][:-11].upper()
@@ -299,16 +305,17 @@ class Server:
         destination_user = "@GLO2000.CA"
         if payload["destination"][-11:] == destination_user.lower():
             intern = True
+            destination = payload["destination"][:-11]
         # ***Variable destination_user n'existe qu'a l'interieur des parenthese***
 
-        if os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination_user):
+        if os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination):
                 exists = True
         
         if intern and exists:
-            with open(gloutils.SERVER_DATA_DIR + "/" + destination_user + "/" + file_name, 'w') as f:
+            with open(gloutils.SERVER_DATA_DIR + "/" + destination + "/" + file_name, 'w') as f:
                 json.dump(payload, f)
 
-            message = gloutils.GLOMessage(header=gloutils.Headers.OK)
+            message = gloutils.GloMessage(header=gloutils.Headers.OK)
         
         else:
             error_string = ""
@@ -329,8 +336,10 @@ class Server:
         """Point d'entrée du serveur."""
         while True:
             # Select readable sockets
-            readable_sockets : list[socket.socket] = select.select([self._server_socket] + self._client_socs, [], [])[0]
-            for waiter in readable_sockets:
+            readable_sockets : list[socket.socket] = [sock for sock in self._client_socs if not sock._closed]
+            readable_sockets.append(self._server_socket)
+            waiters = select.select(readable_sockets, [], [])[0]
+            for waiter in waiters:
                 # Handle sockets
                 if waiter == self._server_socket:
                     self._accept_client()
@@ -342,7 +351,6 @@ class Server:
                         data = json.loads(data)
                         header = data["header"]
                         payload = data.get("payload")
-                        print("data read")
 
                         if header == gloutils.Headers.AUTH_REGISTER:
                             print("reveived")
@@ -350,10 +358,13 @@ class Server:
                             print(str(reply))
 
                         elif header == gloutils.Headers.AUTH_LOGIN:
+                            print("==login==")
                             reply = self._login(waiter, payload)
+                            print(str(reply))
                         
                         elif header == gloutils.Headers.BYE:
                             reply = self._remove_client(waiter)
+                            continue
 
                         elif header == gloutils.Headers.INBOX_READING_REQUEST:
                             reply = self._get_email_list(waiter)
@@ -369,6 +380,7 @@ class Server:
                         
                         elif header == gloutils.Headers.AUTH_LOGOUT:
                             reply = self._logout(waiter)
+                            continue
                         
                         glosocket.send_mesg(waiter, json.dumps(reply))
                         print("reply sent")

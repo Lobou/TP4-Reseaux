@@ -27,11 +27,11 @@ class Client:
         courant. Laissé vide quand l'utilisateur n'est pas connecté.
         """
 
-        self._client_soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._username = None
 
         try:
-            self._client_soc.connect((destination, gloutils.APP_PORT))
+            self._socket.connect((destination, gloutils.APP_PORT))
         except (socket.error, TimeoutError, InterruptedError):
             sys.exit(1)
 
@@ -49,10 +49,10 @@ class Client:
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_REGISTER, payload=payload)
 
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
         print("message sent")
 
-        reply = json.loads(glosocket.recv_mesg(self._client_soc))
+        reply = json.loads(glosocket.recv_mesg(self._socket))
 
         print("reply" + str(reply))
 
@@ -76,9 +76,9 @@ class Client:
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_LOGIN, payload=payload)
         print("sending message")
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
         print("loading reply")
-        reply = json.loads(glosocket.recv_mesg(self._client_soc))
+        reply = json.loads(glosocket.recv_mesg(self._socket))
         print("reply received\t" + str(reply))
         if reply["header"] == gloutils.Headers.OK:
             self._username = username
@@ -91,9 +91,9 @@ class Client:
         socket du client.
         """
         message = gloutils.GloMessage(header=gloutils.Headers.BYE)
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
 
-        self._client_soc.close()
+        self._socket.close()
 
     def _read_email(self) -> None:
         """
@@ -110,9 +110,9 @@ class Client:
         """
 
         message = gloutils.GloMessage(header=gloutils.Headers.INBOX_READING_REQUEST)
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
 
-        reply = json.loads(glosocket.recv_mesg(self._client_soc))
+        reply = json.loads(glosocket.recv_mesg(self._socket))
         payload = reply["payload"]
 
         if len(payload["email_list"]) == 0:
@@ -122,13 +122,22 @@ class Client:
         for subject in payload["email_list"]:
             print(subject)
         
-        choice = int(input(f"Entrez votre choix [1-{len(payload['email_list'])}] : "))
+        choix_valide = False
+        while not choix_valide:
+            try:
+                choice = int(input(f"Entrez votre choix [1-{len(payload['email_list'])}] : "))
+            except ValueError:
+                print("Choix invalide")
+                continue
+            if 1 <= choice <= len(payload['email_list']):
+                choix_valide = True
+            print("Choix invalide")
 
         message2 = gloutils.GloMessage(header=gloutils.Headers.INBOX_READING_CHOICE,
                                        payload=gloutils.EmailChoicePayload(choice=choice))
-        glosocket.send_mesg(self._client_soc, json.dumps(message2))
+        glosocket.send_mesg(self._socket, json.dumps(message2))
 
-        reply2 = json.loads(glosocket.recv_mesg(self._client_soc))
+        reply2 = json.loads(glosocket.recv_mesg(self._socket))
         payload2 = reply2["payload"]
         print(gloutils.EMAIL_DISPLAY.format(
             sender=payload2["sender"],
@@ -151,7 +160,7 @@ class Client:
         Transmet ces informations avec l'entête `EMAIL_SENDING`.
         """
 
-        sender = self._username + "@glo2000.ca"
+        sender = self._username + "@" + gloutils.SERVER_DOMAIN
         destination = input("Entrez l'adresse du destinataire : ")
         subject = input("Entrez le sujet : ")
         print("Entrez le contenu du courriel, terminez la saisie avec un '.' sur sur une ligne : ")
@@ -170,9 +179,9 @@ class Client:
             content=content
         )
         message = gloutils.GloMessage(header=gloutils.Headers.EMAIL_SENDING, payload=payload)
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
 
-        reply = json.loads(glosocket.recv_mesg(self._client_soc))
+        reply = json.loads(glosocket.recv_mesg(self._socket))
         if reply["header"] == gloutils.Headers.OK:
             print("Envoi effectué avec succès :)")
         elif reply["header"] == gloutils.Headers.ERROR:
@@ -187,9 +196,9 @@ class Client:
         """
 
         message = gloutils.GloMessage(header=gloutils.Headers.STATS_REQUEST)
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
 
-        reply = json.loads(glosocket.recv_mesg(self._client_soc))
+        reply = json.loads(glosocket.recv_mesg(self._socket))
         print(gloutils.STATS_DISPLAY.format(
             count=reply["payload"]["count"],
             size=reply["payload"]["size"]
@@ -203,7 +212,7 @@ class Client:
         Met à jour l'attribut `_username`.
         """
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_LOGOUT)
-        glosocket.send_mesg(self._client_soc, json.dumps(message))
+        glosocket.send_mesg(self._socket, json.dumps(message))
 
         self._username = None
         return
@@ -216,11 +225,7 @@ class Client:
             try:
                 if not self._username:
                     # Authentication menu
-                    print("""Menu de connexion
-                        1. Créer un compte
-                        2. Se connecter
-                        3. Quitter
-                        """)
+                    print(gloutils.CLIENT_AUTH_CHOICE)
                     choix = input("Entrez votre choix [1-3] : ")
 
                     if choix == "1":
@@ -228,18 +233,14 @@ class Client:
                     elif choix == "2":
                         self._login()
                     elif choix == "3":
+                        self._quit()
                         should_quit = True
                     else:
                         print("Choix invalide...")
 
                 else:
                     # Main menu
-                    print("""Menu principal
-                        1. Consultation de courriels
-                        2. Envoi de courriels
-                        3. Statistiques
-                        4. Se déconnecter
-                        """)
+                    print(gloutils.CLIENT_USE_CHOICE)
                     choix = input("Entrez votre choix [1-4] : ")
 
                     if choix == "1":
@@ -255,7 +256,6 @@ class Client:
             except (ConnectionResetError, glosocket.GLOSocketError):
                 self._quit()
                 sys.exit(1)
-        self._quit()
 
 
 def _main() -> int:

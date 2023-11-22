@@ -72,6 +72,7 @@ class Server:
             self._logged_users.pop(client_soc)
             self._client_socs.remove(client_soc)
         except (KeyError, ValueError):
+            # No need to do anything, the client soc isn't in containers
             pass
 
         client_soc.close()
@@ -114,14 +115,12 @@ class Server:
 
         if validCredentials:
             os.makedirs(gloutils.SERVER_DATA_DIR + "/" + userName)
-            #os.makedirs(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME)
 
             # hash password and add to folder
             encodedPw = pw.encode('utf-8')
             hasher = hashlib.sha3_224()
             hasher.update(encodedPw)
             data = {"password_hash": hasher.hexdigest()}
-            print(str(hasher.hexdigest()))
             with open(gloutils.SERVER_DATA_DIR + "/" + userName + "/" + gloutils.PASSWORD_FILENAME, 'w') as f:
                 json.dump(data, f)
             
@@ -132,17 +131,17 @@ class Server:
         else:
             error_string = ""
             if not validUsername:
-                error_string = "Le nom d'utilisateur n'est pas alphanumérique"
-            elif not newUsername:
-                error_string = "Ce nom d'utilisateur est déjà pris"
-            elif not validPwLength:
-                error_string = "Le mot de passe doit contenir au moins 10 caractères"
-            elif not pwContainsNumber:
-                error_string = "Le mot de passe doit contenir au moins un chiffre"
-            elif not pwContainsMin:
-                error_string = "Le mot de passe doit contenir au moins une minuscule"
-            elif not pwContainsMaj:
-                error_string = "Le mot de passe doit contenir au moins une majuscule"
+                error_string += "Le nom d'utilisateur n'est pas alphanumérique\n"
+            if not newUsername:
+                error_string += "Ce nom d'utilisateur est déjà pris\n"
+            if not validPwLength:
+                error_string += "Le mot de passe doit contenir au moins 10 caractères\n"
+            if not pwContainsNumber:
+                error_string += "Le mot de passe doit contenir au moins un chiffre\n"
+            if not pwContainsMin:
+                error_string += "Le mot de passe doit contenir au moins une minuscule\n"
+            if not pwContainsMaj:
+                error_string += "Le mot de passe doit contenir au moins une majuscule\n"
             
             message = gloutils.GloMessage(header=gloutils.Headers.ERROR,
                                           payload=gloutils.ErrorPayload(error_message=error_string))
@@ -169,7 +168,7 @@ class Server:
                 storedHash = json.load(f)
             given_hash = hashlib.sha3_224()
             given_hash.update(pw.encode('utf-8'))
-            validPw = given_hash.hexdigest() == storedHash["password_hash"]
+            validPw = hmac.compare_digest(given_hash.hexdigest(), storedHash["password_hash"])
         print("valid username\t" + str(validUsername) + "\nvalid password\t" + str(validPw))
         if validUsername and validPw:
             message = gloutils.GloMessage(header=gloutils.Headers.OK)
@@ -297,19 +296,13 @@ class Server:
         """
         intern = exists = False
         file_name = "mail" + str(random.randrange(1000000))
+        destination = payload["destination"][:-11]
 
-        # if payload["destination"][-11:] == "@glo2000.ca":
-        #     destination_user = payload["destination"][:-11].upper()
-        #     intern = True
-
-        destination_user = "@GLO2000.CA"
-        if payload["destination"][-11:] == destination_user.lower():
+        if payload["destination"][-10:] == gloutils.SERVER_DOMAIN.lower():
             intern = True
-            destination = payload["destination"][:-11]
-        # ***Variable destination_user n'existe qu'a l'interieur des parenthese***
 
         if os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination):
-                exists = True
+            exists = True
         
         if intern and exists:
             with open(gloutils.SERVER_DATA_DIR + "/" + destination + "/" + file_name, 'w') as f:

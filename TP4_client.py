@@ -1,8 +1,8 @@
 """\
 GLO-2000 Travail pratique 4 - Client
 Noms et numéros étudiants:
--
--
+- Raphaël Chheang 536 993 135
+- Loïc Boutet 536 981 506
 -
 """
 
@@ -11,6 +11,7 @@ import getpass
 import json
 import socket
 import sys
+import os
 
 import glosocket
 import gloutils
@@ -50,11 +51,7 @@ class Client:
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_REGISTER, payload=payload)
 
         glosocket.send_mesg(self._socket, json.dumps(message))
-        print("message sent")
-
         reply = json.loads(glosocket.recv_mesg(self._socket))
-
-        print("reply" + str(reply))
 
         if reply["header"] == gloutils.Headers.OK:
             self._username = username
@@ -75,12 +72,10 @@ class Client:
 
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_LOGIN, payload=payload)
-        print("sending message")
         glosocket.send_mesg(self._socket, json.dumps(message))
-        print("loading reply")
         reply = json.loads(glosocket.recv_mesg(self._socket))
-        print("reply received\t" + str(reply))
         if reply["header"] == gloutils.Headers.OK:
+            print("Connexion établie avec succès")
             self._username = username
         elif reply["header"] == gloutils.Headers.ERROR:
             print(reply["payload"]["error_message"])
@@ -131,7 +126,8 @@ class Client:
                 continue
             if 1 <= choice <= len(payload['email_list']):
                 choix_valide = True
-            print("Choix invalide")
+            else:
+                print("Choix invalide")
 
         message2 = gloutils.GloMessage(header=gloutils.Headers.INBOX_READING_CHOICE,
                                        payload=gloutils.EmailChoicePayload(choice=choice))
@@ -162,6 +158,15 @@ class Client:
 
         sender = self._username + "@" + gloutils.SERVER_DOMAIN
         destination = input("Entrez l'adresse du destinataire : ")
+
+        if (destination[-10:] != gloutils.SERVER_DOMAIN):
+            print("Le destinataire est externe au serveur")
+            return
+
+        if (os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination)):
+            print("Cet utilisateur n'existe pas")
+            return
+
         subject = input("Entrez le sujet : ")
         print("Entrez le contenu du courriel, terminez la saisie avec un '.' sur sur une ligne : ")
         content = ""
@@ -215,6 +220,7 @@ class Client:
         glosocket.send_mesg(self._socket, json.dumps(message))
 
         self._username = None
+        print("Déconnexion effectuée avec succès")
         return
 
     def run(self) -> None:
@@ -252,7 +258,7 @@ class Client:
                     elif choix == "4":
                         self._logout()
                     else:
-                        print("Choix invalide...")
+                        print("Choix invalide")
             except (ConnectionResetError, glosocket.GLOSocketError):
                 self._quit()
                 sys.exit(1)

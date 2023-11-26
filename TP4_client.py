@@ -163,7 +163,7 @@ class Client:
             print("Le destinataire est externe au serveur")
             return
 
-        if (not os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination)):
+        if (not os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination[:-11])):
             print("Cet utilisateur n'existe pas")
             return
 

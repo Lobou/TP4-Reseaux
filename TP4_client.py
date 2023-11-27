@@ -50,11 +50,8 @@ class Client:
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_REGISTER, payload=payload)
 
         glosocket.send_mesg(self._socket, json.dumps(message))
-        print("message sent")
 
         reply = json.loads(glosocket.recv_mesg(self._socket))
-
-        print("reply" + str(reply))
 
         if reply["header"] == gloutils.Headers.OK:
             self._username = username
@@ -75,11 +72,9 @@ class Client:
 
         payload = gloutils.AuthPayload(username=username, password=pw)
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_LOGIN, payload=payload)
-        print("sending message")
         glosocket.send_mesg(self._socket, json.dumps(message))
-        print("loading reply")
         reply = json.loads(glosocket.recv_mesg(self._socket))
-        print("reply received\t" + str(reply))
+        
         if reply["header"] == gloutils.Headers.OK:
             self._username = username
         elif reply["header"] == gloutils.Headers.ERROR:

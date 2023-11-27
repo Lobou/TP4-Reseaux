@@ -169,7 +169,7 @@ class Server:
             given_hash = hashlib.sha3_224()
             given_hash.update(pw.encode('utf-8'))
             validPw = hmac.compare_digest(given_hash.hexdigest(), storedHash["password_hash"])
-        print("valid username\t" + str(validUsername) + "\nvalid password\t" + str(validPw))
+
         if validUsername and validPw:
             message = gloutils.GloMessage(header=gloutils.Headers.OK)
             self._logged_users[client_soc] = userName
@@ -312,10 +312,9 @@ class Server:
         
         else:
             error_string = ""
+            with open(gloutils.SERVER_DATA_DIR + "/" + gloutils.SERVER_LOST_DIR + "/" + file_name, 'w') as f:
+                json.dump(payload, f)
             if intern == False:
-                with open(gloutils.SERVER_DATA_DIR + "/" + gloutils.SERVER_LOST_DIR + file_name, 'w') as f:
-                    json.dump(payload, f)
-
                 error_string = "Le destinataire est externe au serveur"
             elif exists == False:
                 error_string = "Cet utilisateur n'existe pas"
@@ -336,24 +335,18 @@ class Server:
                 # Handle sockets
                 if waiter == self._server_socket:
                     self._accept_client()
-                    print("client accepted")
                 else:
                     try:
-                        print("reading data")
                         data = glosocket.recv_mesg(waiter)
                         data = json.loads(data)
                         header = data["header"]
                         payload = data.get("payload")
 
                         if header == gloutils.Headers.AUTH_REGISTER:
-                            print("reveived")
                             reply = self._create_account(waiter, payload)
-                            print(str(reply))
 
                         elif header == gloutils.Headers.AUTH_LOGIN:
-                            print("==login==")
                             reply = self._login(waiter, payload)
-                            print(str(reply))
                         
                         elif header == gloutils.Headers.BYE:
                             reply = self._remove_client(waiter)
@@ -376,7 +369,6 @@ class Server:
                             continue
                         
                         glosocket.send_mesg(waiter, json.dumps(reply))
-                        print("reply sent")
 
                     except (ConnectionResetError, glosocket.GLOSocketError):
                         self._remove_client(waiter)

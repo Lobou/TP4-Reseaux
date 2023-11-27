@@ -11,7 +11,6 @@ import getpass
 import json
 import socket
 import sys
-import os
 
 import glosocket
 import gloutils
@@ -51,7 +50,6 @@ class Client:
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_REGISTER, payload=payload)
 
         glosocket.send_mesg(self._socket, json.dumps(message))
-        print("message sent")
 
         reply = json.loads(glosocket.recv_mesg(self._socket))
 
@@ -76,7 +74,6 @@ class Client:
         message = gloutils.GloMessage(header=gloutils.Headers.AUTH_LOGIN, payload=payload)
         glosocket.send_mesg(self._socket, json.dumps(message))
         reply = json.loads(glosocket.recv_mesg(self._socket))
-        print("reply received\t" + str(reply))
         if reply["header"] == gloutils.Headers.OK:
             print("Connexion établie avec succès")
             self._username = username

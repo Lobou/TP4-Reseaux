@@ -1,8 +1,8 @@
 """\
 GLO-2000 Travail pratique 4 - Serveur
 Noms et numéros étudiants:
--
--
+- Raphaël Chheang 536 993 135
+- Loïc Boutet 536 981 506
 -
 """
 

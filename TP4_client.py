@@ -162,14 +162,6 @@ class Client:
         sender = self._username + "@" + gloutils.SERVER_DOMAIN
         destination = input("Entrez l'adresse du destinataire : ")
 
-        if (destination[-10:] != gloutils.SERVER_DOMAIN):
-            print("Le destinataire est externe au serveur")
-            return
-
-        if (not os.path.exists(gloutils.SERVER_DATA_DIR + "/" + destination[:-11])):
-            print("Cet utilisateur n'existe pas")
-            return
-
         subject = input("Entrez le sujet : ")
         print("Entrez le contenu du courriel, terminez la saisie avec un '.' sur sur une ligne : ")
         content = ""
